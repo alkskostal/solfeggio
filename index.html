@@ -1,4 +1,5 @@
-<title>Сольфеджио для учеников</title>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#ece9df"><meta name="description" content="Тренажёр по сольфеджио для учеников">
+<title>Сольфеджио для учеников</title></head><body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap">
@@ -223,6 +224,24 @@ table.ref td,table.ref th{padding-right:14px}
 .durc span{color:var(--muted);font-size:.8rem}
 .rc.wide{grid-column:1/-1}
 .rc.wide .dsys{max-width:420px}
+
+/* мобильные */
+.link,.back,.brand{min-height:44px;display:inline-flex;align-items:center}
+.top{padding-block:6px}
+.chip{min-height:44px}
+.seg button,.btn,.opt,.mode{min-height:44px}
+html{-webkit-text-size-adjust:100%}
+button,.key,.hit{touch-action:manipulation}
+@media (max-width:480px){body{padding-inline:12px}.hero{padding:22px 16px}.btn{padding-inline:16px}}
+
+.dwork{position:sticky;bottom:0;z-index:5;background:var(--bg);padding:8px 0 calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);margin-top:8px}
+.dwork .kbwrap,.dwork .kb-tools,.dwork .pal{margin-bottom:8px}
+.dwork .kb-tools{justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.alts{display:flex;gap:6px;margin-right:auto}
+.alts .btn{min-width:36px;padding-inline:0}.dwork .kb-tools{gap:6px}.dwork .btn{padding-inline:9px}.alts{margin-right:auto;gap:4px}
+.dwork .btn.small{padding:8px 12px}
+.dwork .kb{max-height:110px;width:100%}
+@media (max-width:480px){.dwork .pal{grid-template-columns:repeat(3,1fr);gap:6px}.dwork .pbtn{padding:4px;font-size:.74rem}.dwork .dur{height:32px}}
 </style>
 <div id="app"></div>
 <script>
@@ -1166,17 +1185,18 @@ function viewDict() {
   const info = mel
     ? `<p class="dinfo"><b>${keyName(q.n, q.lad)}</b>, размер ${q.meter}, ${q.bars} ${plural(q.bars, 'такт', 'такта', 'тактов')}. Ритм записан, первый звук дан: <b>${ruNote(q.notes[0])}</b>. Нажми на нужную высоту прямо на нотном стане (над нужной нотой) или выбери ноту и нажми клавишу.</p>`
     : `<p class="dinfo">Размер <b>${q.meter}</b>, ${q.bars} ${plural(q.bars, 'такт', 'такта', 'тактов')}. Послушай и собери ритм по тактам из длительностей.</p>`;
-  const tools = `<div class="listen dtools"><button class="btn" data-act="dplay" data-v="all">▶ Весь диктант</button>${mel ? '<button class="btn ghost" data-act="dtonic">Тоника</button>' : ''}</div><div class="dbars"><span class="muted">Послушать по тактам:</span> ${barChips}</div>`;
+  const labs = mel && !D.done ? `<label class="tg"><input type="checkbox" id="lab" data-act="labels" ${S.labels ? 'checked' : ''}> Подписи клавиш</label>` : '';
+  const tools = `<div class="listen dtools"><button class="btn" data-act="dplay" data-v="all">▶ Весь диктант</button>${mel ? '<button class="btn ghost" data-act="dtonic">Тоника</button>' : ''}${labs}</div><div class="dbars"><span class="muted">Послушать по тактам:</span> ${barChips}</div>`;
   let work = '';
   if (!D.done) {
     if (mel) {
       const sel = new Set(D.pp[D.cur] ? [midi(D.pp[D.cur]) - 60] : []);
       const ready = D.pp.every(p => p);
-      work = `<div class="kbwrap">${keyboardSVG({ sel, root: null, labels: S.labels })}</div><div class="kb-tools"><label class="tg"><input type="checkbox" id="lab" data-act="labels" ${S.labels ? 'checked' : ''}> Подписи клавиш</label><span class="grow"></span><button class="btn ghost small" data-act="dalt" data-v="1" aria-label="Повысить">♯</button><button class="btn ghost small" data-act="dalt" data-v="-1" aria-label="Понизить">♭</button><button class="btn ghost small" data-act="dalt" data-v="0" aria-label="По ключу">♮</button><button class="btn ghost small" data-act="ddel">Стереть ноту</button><button class="btn" data-act="dcheck" ${ready ? '' : 'disabled'}>Проверить</button></div>`;
+      work = `<div class="dwork"><div class="kbwrap">${keyboardSVG({ sel, root: null, labels: S.labels })}</div><div class="kb-tools"><span class="alts"><button class="btn ghost small" data-act="dalt" data-v="1" aria-label="Повысить">♯</button><button class="btn ghost small" data-act="dalt" data-v="-1" aria-label="Понизить">♭</button><button class="btn ghost small" data-act="dalt" data-v="0" aria-label="По ключу">♮</button></span><button class="btn ghost small" data-act="ddel">Стереть</button><button class="btn" data-act="dcheck" ${ready ? '' : 'disabled'}>Проверить</button></div></div>`;
     } else {
       const cb = rbCurBar(D), rem = cb < 0 ? 0 : q.units - D.rb[cb].reduce((a, x) => a + x, 0);
       const list = [1, 2, 4].concat(S.level === 3 && q.meter !== '2/4' ? [3] : [], q.meter === '2/4' ? [] : [6], q.meter === '4/4' ? [8] : []).sort((a, b) => a - b);
-      work = `<div class="pal">${list.map(u => `<button class="pbtn" data-act="dadd" data-v="${u}" ${u > rem ? 'disabled' : ''}>${durIcon(u)}<span>${DUR_NAME[u]}</span></button>`).join('')}</div><div class="kb-tools"><span class="grow"></span><button class="btn ghost small" data-act="ddel">Стереть последнюю</button><button class="btn" data-act="dcheck" ${rbFull(D) ? '' : 'disabled'}>Проверить</button></div>`;
+      work = `<div class="dwork"><div class="pal">${list.map(u => `<button class="pbtn" data-act="dadd" data-v="${u}" ${u > rem ? 'disabled' : ''}>${durIcon(u)}<span>${DUR_NAME[u]}</span></button>`).join('')}</div><div class="kb-tools"><span class="grow"></span><button class="btn ghost small" data-act="ddel">Стереть</button><button class="btn" data-act="dcheck" ${rbFull(D) ? '' : 'disabled'}>Проверить</button></div></div>`;
     }
   } else {
     const all = D.ok === D.tot;
@@ -1294,3 +1314,4 @@ loadPiano();
 render();
 
 </script>
+</body></html>
