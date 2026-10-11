@@ -242,6 +242,22 @@ button,.key,.hit{touch-action:manipulation}
 .dwork .btn.small{padding:8px 12px}
 .dwork .kb{max-height:110px;width:100%}
 @media (max-width:480px){.dwork .pal{grid-template-columns:repeat(3,1fr);gap:6px}.dwork .pbtn{padding:4px;font-size:.74rem}.dwork .dur{height:32px}}
+
+.rtop{gap:6px 14px}
+.after{position:sticky;bottom:0;z-index:6;background:var(--bg);padding:8px 0 calc(8px + env(safe-area-inset-bottom));max-height:55vh;overflow-y:auto;margin-top:6px;border-top:1px solid var(--line)}
+.after .fb,.after .award{margin-bottom:8px}
+.after .next,.after .listen{margin-bottom:6px}
+.after{display:flex;flex-direction:column}.after .next{order:-1}.after .next .btn{width:100%}
+@media (max-width:600px){
+  .top{flex-wrap:wrap;padding-block:2px;gap:0 8px}
+  .brand{font-size:1.2rem;min-height:36px}.brand-mark{font-size:1.5rem}
+  .nav{gap:2px 12px;flex-wrap:wrap}.nav .link,.who{font-size:.8rem;white-space:nowrap}
+  .link,.back{min-height:38px}
+  .rtop{display:flex;align-items:center;flex-wrap:nowrap}
+  .rtop .dots{margin-left:auto;gap:4px}.dot{width:10px;height:10px}
+  .rtop .back,.rtop .link{white-space:nowrap;font-size:.88rem}
+  .prompt{font-size:1.35rem}
+}
 </style>
 <div id="app"></div>
 <script>
@@ -1009,10 +1025,10 @@ function viewRound() {
   }
   if (R.answered) {
     const ok = R.result;
-    body += `<div class="fb ${ok ? 'good' : 'bad'}" role="status">${q.avatar && sec.id !== 'intervals' ? avatar(q.avatar, 'sm') : ''}<div><strong>${ok ? 'Верно!' : 'Не совсем.'}</strong> ${esc(q.explain)}${q.type === 'build' && !ok ? `<div class="fb-n">Правильно: ${esc(q.noteLine)}</div>` : ''}</div></div>${awardHTML(R.fresh)}<div class="next"><button class="btn" data-act="next">${R.i + 1 === R.qs.length ? 'Результат' : 'Дальше'}</button></div>`;
+    body += `<div class="after"><div class="fb ${ok ? 'good' : 'bad'}" role="status">${q.avatar && sec.id !== 'intervals' ? avatar(q.avatar, 'sm') : ''}<div><strong>${ok ? 'Верно!' : 'Не совсем.'}</strong> ${esc(q.explain)}${q.type === 'build' && !ok ? `<div class="fb-n">Правильно: ${esc(q.noteLine)}</div>` : ''}</div></div>${awardHTML(R.fresh)}<div class="next"><button class="btn" data-act="next">${R.i + 1 === R.qs.length ? 'Результат' : 'Дальше'}</button></div></div>`;
   }
   const streak = st.streak >= 2 ? `<span class="streak">Серия: ${st.streak}</span>` : '';
-  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="${S.sec}">← ${sec.title}</button><div class="dots" aria-label="Задание ${R.i + 1} из ${R.qs.length}">${dots}</div></div><div class="rsub"><button class="link" data-act="ref">Справка</button>${streak}</div>${body}</main>`;
+  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="${S.sec}">← ${sec.title}</button><button class="link" data-act="ref">Справка</button><div class="dots" aria-label="Задание ${R.i + 1} из ${R.qs.length}">${dots}</div></div>${streak ? `<div class="rsub">${streak}</div>` : ''}${body}</main>`;
 }
 function kbHTML(q, plain) {
   const R = S.round; const k = q.kb || {};
@@ -1262,11 +1278,11 @@ function viewDict() {
     const all = D.ok === D.tot;
     work = `<div class="fb ${all ? 'good' : 'bad'}" role="status"><div><strong>${all ? 'Всё верно!' : 'Есть ошибки.'}</strong> ${mel ? `Верных нот: ${D.ok} из ${D.tot} (первую подсказали).` : `Верных тактов: ${D.ok} из ${D.tot}.`} ${all ? '' : 'Красным отмечено неверное. Ниже правильная запись, она звучит сейчас.'}<div class="fb-n">${starsRow(D.stars)}</div></div></div>${awardHTML(D.fresh)}
     ${all ? '' : `<h3 class="lab">Правильно</h3><div class="paper dpaper">${right}</div>`}
-    <div class="listen"><button class="btn ghost" data-act="dplay" data-v="right">▶ Правильный</button><button class="btn ghost" data-act="dplay" data-v="mine">▶ Мой вариант</button></div>
-    <div class="row wrap-row"><button class="btn" data-act="start" data-v="${S.mode}">Ещё диктант</button><button class="btn ghost" data-act="section" data-v="dict">К заданиям раздела</button><button class="btn ghost" data-act="home">Все разделы</button></div>`;
+    <div class="after"><div class="listen"><button class="btn ghost" data-act="dplay" data-v="right">▶ Правильный</button><button class="btn ghost" data-act="dplay" data-v="mine">▶ Мой вариант</button></div>
+    <div class="row wrap-row"><button class="btn" data-act="start" data-v="${S.mode}">Ещё диктант</button><button class="btn ghost" data-act="section" data-v="dict">К заданиям раздела</button><button class="btn ghost" data-act="home">Все разделы</button></div></div>`;
   }
   const streak = st.streak >= 2 ? `<span class="streak">Серия: ${st.streak}</span>` : '';
-  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="dict">← Диктанты</button></div><div class="rsub"><button class="link" data-act="ref">Справка</button>${streak}</div>
+  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="dict">← Диктанты</button><button class="link" data-act="ref">Справка</button></div>${streak ? `<div class="rsub">${streak}</div>` : ''}
   <h2 class="prompt">${mel ? 'Мелодический диктант' : 'Ритмический диктант'}</h2>${info}${tools}<div class="paper dpaper">${paper}</div>${work}</main>`;
 }
 function refDict() {
