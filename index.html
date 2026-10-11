@@ -678,11 +678,69 @@ const STORE_KEY = 'solfeggio-v1';
 const SUGGEST = ['Юля', 'Марк', 'Егор', 'Полина', 'Ника'];
 let DB = { v: 1, last: '', st: {} };
 function loadDB() { try { const r = JSON.parse(localStorage.getItem(STORE_KEY)); if (r && r.st) DB = r; } catch (e) { /* пусто */ } }
-function saveDB() { try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) { /* без сохранения */ } }
+function saveDB() { try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) { /* без сохранения */ } if (typeof S !== 'undefined' && S.name) queueSync(S.name); }
 function student(name) {
   const s = DB.st[name] || (DB.st[name] = { seen: Date.now(), sets: {}, items: {}, log: [] });
   s.stat ||= { correct: 0, answered: 0, streak: 0, best: 0 }; s.badges ||= {};
   return s;
+}
+
+
+/* ---------- Общая база (Firebase). Работает, когда в FB_CONFIG вставлены настройки проекта ---------- */
+const FB_CONFIG = {"apiKey":"AIzaSyCtF8xDbFnJDRPZd53Nk7hxvH1nnSUl-Fk","authDomain":"solfeggio-78565.firebaseapp.com","projectId":"solfeggio-78565","storageBucket":"solfeggio-78565.firebasestorage.app","messagingSenderId":"228865774239","appId":"1:228865774239:web:44c3bc80c6c3a48aee88aa"};
+const TEACHER_EMAIL = 'alkskost@gmail.com';
+const FBV = 'https://www.gstatic.com/firebasejs/10.12.2/';
+let FB = null, SYNC = 0;
+function fb() {
+  if (!FB_CONFIG) return Promise.resolve(null);
+  if (!FB) FB = (async () => {
+    const [a, au, fs] = await Promise.all([import(FBV + 'firebase-app.js'), import(FBV + 'firebase-auth.js'), import(FBV + 'firebase-firestore.js')]);
+    const app = a.initializeApp(FB_CONFIG);
+    return { au, fs, auth: au.getAuth(app), db: fs.getFirestore(app) };
+  })();
+  return FB;
+}
+function deviceId() {
+  try { let d = localStorage.getItem('solfeggio-device'); if (!d) { d = Math.random().toString(36).slice(2, 10); localStorage.setItem('solfeggio-device', d); } return d; } catch (e) { return 'nodev'; }
+}
+function queueSync(name) { if (!FB_CONFIG || !name) return; clearTimeout(SYNC); SYNC = setTimeout(() => pushStudent(name), 1500); }
+async function pushStudent(name) {
+  try {
+    const f = await fb(); if (!f || !DB.st[name]) return;
+    if (!f.auth.currentUser) await f.au.signInAnonymously(f.auth);
+    await f.fs.setDoc(f.fs.doc(f.db, 'progress', encodeURIComponent(name) + '__' + deviceId()), { name, device: deviceId(), updated: Date.now(), data: JSON.stringify(DB.st[name]) });
+  } catch (e) { console.warn('sync', e); }
+}
+function mergeProgress(rows) {
+  const out = {};
+  rows.forEach(r => {
+    let d; try { d = JSON.parse(r.data); } catch (e) { return; }
+    const m = (out[r.name] ||= { seen: 0, sets: {}, items: {}, log: [], stat: { correct: 0, answered: 0, streak: 0, best: 0 }, badges: {} });
+    m.seen = Math.max(m.seen, d.seen || 0);
+    const st = d.stat || {}; m.stat.correct += st.correct || 0; m.stat.answered += st.answered || 0; m.stat.best = Math.max(m.stat.best, st.best || 0);
+    Object.entries(d.sets || {}).forEach(([k, v]) => { const x = (m.sets[k] ||= { best: 0, rounds: 0, ok: 0, n: 0 }); x.best = Math.max(x.best, v.best); x.rounds += v.rounds; x.ok += v.ok; x.n += v.n; });
+    Object.entries(d.items || {}).forEach(([k, v]) => { const x = (m.items[k] ||= { n: 0, ok: 0 }); x.n += v.n; x.ok += v.ok; });
+    Object.entries(d.badges || {}).forEach(([k, t]) => { m.badges[k] = Math.min(m.badges[k] || t, t); });
+    m.log = m.log.concat(d.log || []);
+  });
+  return out;
+}
+async function loadCloud() {
+  S.cloud = { status: 'loading' }; render();
+  try {
+    const f = await fb();
+    let u = f.auth.currentUser;
+    if (!u || u.isAnonymous || u.email !== TEACHER_EMAIL) { const r = await f.au.signInWithPopup(f.auth, new f.au.GoogleAuthProvider()); u = r.user; }
+    if (u.email !== TEACHER_EMAIL) { await f.au.signOut(f.auth); throw new Error('Этот аккаунт не имеет доступа. Войди почтой преподавателя.'); }
+    const snap = await f.fs.getDocs(f.fs.collection(f.db, 'progress'));
+    const rows = [], ids = {};
+    snap.forEach(d => { const v = d.data(); rows.push(v); (ids[v.name] ||= []).push(d.id); });
+    S.cloud = { status: 'ok', data: mergeProgress(rows), ids, devices: rows.length, at: Date.now() };
+  } catch (e) { S.cloud = { status: 'error', msg: String(e && e.message || e) }; }
+  render();
+}
+async function deleteCloud(name) {
+  try { const f = await fb(); for (const id of (S.cloud.ids[name] || [])) await f.fs.deleteDoc(f.fs.doc(f.db, 'progress', id)); delete S.cloud.data[name]; delete S.cloud.ids[name]; } catch (e) { console.warn(e); }
 }
 
 /* ---------- Награды (черновик, названия обсудим) ---------- */
@@ -975,10 +1033,11 @@ function viewResult() {
 /* --- кабинет преподавателя --- */
 function fmtDate(t) { try { return new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }); } catch (e) { return ''; } }
 function viewTeacher() {
-  const names = Object.keys(DB.st); let cards = '';
+  const cloudOn = !!FB_CONFIG, C = S.cloud || {}, src = cloudOn ? (C.status === 'ok' ? C.data : {}) : DB.st;
+  const names = Object.keys(src).sort(); let cards = '';
   const maxStars = SECTIONS.reduce((a, x) => a + x.modes.length * x.levels.length * 3, 0);
   names.forEach(n => {
-    const s = student(n); let stars = 0, ok = 0, tot = 0;
+    const s = src[n]; s.stat ||= { correct: 0, answered: 0, streak: 0, best: 0 }; s.badges ||= {}; let stars = 0, ok = 0, tot = 0;
     Object.values(s.sets).forEach(r => { stars += r.best; ok += r.ok; tot += r.n; });
     const rows = SECTIONS.map(sec => {
       let o = 0, t = 0, rounds = 0;
@@ -994,7 +1053,8 @@ function viewTeacher() {
     <h3 class="lab">Чаще всего ошибается</h3>${weak ? `<ul class="weak">${weak}</ul>` : '<p class="muted">Пока мало данных: нужно хотя бы по 3 ответа на тему.</p>'}
     <div class="stu-f"><button class="link danger" data-act="del" data-v="${esc(n)}">${S.confirmDel === n ? 'Нажми ещё раз: удалить весь прогресс' : 'Удалить ученика'}</button></div></article>`;
   });
-  return `${header()}<main class="wrap"><button class="back" data-act="${S.name ? 'home' : 'logout'}">← Назад</button><h1 class="h-sec">Прогресс учеников</h1><p class="lead">Показаны ученики, которые занимались на этом устройстве. Общий список со всех телефонов появится, когда сайт будет опубликован с базой данных.</p>${cards || '<div class="card empty"><p>Пока никто не занимался. Когда ученик пройдёт первый раунд, он появится здесь.</p></div>'}</main>`;
+  const panel = !cloudOn ? '' : C.status === 'loading' ? '<div class="card empty"><p>Загружаю результаты…</p></div>' : C.status === 'ok' ? `<p class="muted">Обновлено ${new Date(C.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}, устройств: ${C.devices}. <button class="link" data-act="tcloud">Обновить</button></p>` : `<div class="card empty"><p>${C.status === 'error' ? esc(C.msg) + '<br><br>' : 'Чтобы увидеть результаты всех учеников, войди аккаунтом преподавателя.<br><br>'}<button class="btn" data-act="tcloud">Войти через Google</button></p></div>`;
+  return `${header()}<main class="wrap"><button class="back" data-act="${S.name ? 'home' : 'logout'}">← Назад</button><h1 class="h-sec">Прогресс учеников</h1>${panel}<p class="lead">${cloudOn ? 'Результаты со всех устройств, где ученики заходили на сайт.' : 'Показаны ученики, которые занимались на этом устройстве.'}</p>${cards || '<div class="card empty"><p>Пока никто не занимался. Когда ученик пройдёт первый раунд, он появится здесь.</p></div>'}</main>`;
 }
 
 /* ---------- Диктанты ---------- */
@@ -1282,7 +1342,8 @@ document.addEventListener('click', e => {
   if (a === 'home') { e.preventDefault(); S.screen = S.name ? 'home' : 'login'; render(); }
   else if (a === 'pickname') goName(v);
   else if (a === 'logout') { S.name = ''; S.screen = 'login'; render(); }
-  else if (a === 'teacher') { S.confirmDel = null; S.screen = 'teacher'; render(); }
+  else if (a === 'teacher') { S.confirmDel = null; S.screen = 'teacher'; render(); if (FB_CONFIG && !(S.cloud && S.cloud.status === 'ok')) S.cloud = { status: 'idle' }, render(); }
+  else if (a === 'tcloud') loadCloud();
   else if (a === 'section') { S.sec = v; S.screen = 'section'; render(); }
   else if (a === 'level') { S.level = +v; render(); }
   else if (a === 'start') { if (S.sec === 'dict') startDict(v); else { startRound(v); autoPlay(); } }
@@ -1303,7 +1364,7 @@ document.addEventListener('click', e => {
   else if (a === 'play') play(S.round.qs[S.round.i]);
   else if (a === 'labels' && S.screen === 'dict') { S.labels = t.checked; render(); }
   else if (a === 'labels') { S.labels = t.checked; const q = S.round.qs[S.round.i]; const wrap = app.querySelector('.kbwrap'); if (wrap) wrap.innerHTML = kbHTML(q, false); }
-  else if (a === 'del') { if (S.confirmDel === v) { delete DB.st[v]; if (DB.last === v) DB.last = ''; saveDB(); S.confirmDel = null; } else S.confirmDel = v; render(); }
+  else if (a === 'del') { if (S.confirmDel === v) { delete DB.st[v]; if (DB.last === v) DB.last = ''; try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) { /* ok */ } S.confirmDel = null; if (FB_CONFIG && S.cloud && S.cloud.ids) deleteCloud(v).then(render); } else S.confirmDel = v; render(); }
 });
 document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-snd]')) { e.preventDefault(); e.target.click(); } });
 document.addEventListener('submit', e => { const f = e.target.closest('[data-form="login"]'); if (f) { e.preventDefault(); goName(f.querySelector('#nm').value); } });
