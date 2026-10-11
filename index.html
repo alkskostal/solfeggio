@@ -674,7 +674,7 @@ function spellForKey(m, n, lad) {
 const CH_LETTERS = 'CDEFGAH';
 function chordSym(root, kind) {
   let s = CH_LETTERS[root.l];
-  if (root.a > 0) s += '♯'; else if (root.a < 0) s = root.l === 6 ? 'B' : s + '♭';
+  if (root.a > 0) s += '♯'; else if (root.a < 0) s = root.l === 6 ? 'B♭' : s + '♭';
   return s + (kind === 'min' ? 'm' : '');
 }
 const CH = (l, a, kind) => ({ l, a, kind });
@@ -694,7 +694,7 @@ function genChord(mode, level) {
   const cands = [other, ...shuffle(near), ...shuffle(pool)].filter(x => okAlt(chordNotes(x)));
   const choose = (keyOf) => { const out = [c], seen = new Set([keyOf(c)]); for (const x of cands) { if (out.length >= 4) break; const k = keyOf(x); if (!seen.has(k)) { seen.add(k); out.push(x); } } return shuffle(out); };
   const kn = KINDS[c.kind];
-  const expl = `${sym} — ${kn.name} трезвучие от ${ruNote(root)}: ${triadText(ps)}. ` + (c.kind === 'min' ? 'Буква m значит «минор»: снизу малая терция.' : 'Если рядом нет m, аккорд мажорный: снизу большая терция.') + (c.l === 6 ? ' Помни: H — это си, B — это си-бемоль.' : '');
+  const expl = `${sym} — ${kn.name} трезвучие от ${ruNote(root)}: ${triadText(ps)}. ` + (c.kind === 'min' ? 'Буква m значит «минор»: снизу малая терция.' : 'Если рядом нет m, аккорд мажорный: снизу большая терция.') + (c.l === 6 ? ' Помни: H — это си, а B♭ — си-бемоль.' : '');
   const base = { section: 'chords', mode, level, key: sym, explain: expl, avatar: c.kind, sound: { midis: ps.map(midi), mode: 'both' }, soundAfter: m === 'build' || m === 'notes' };
   if (m === 'build') return { type: 'build', ...base, prompt: 'Сыграй трезвучие на клавиатуре по обозначению аккорда:', big: sym, kb: { root: null, check: 'pcs', expect: ps.map(pcOf), need: 3 }, noteLine: triadText(ps) };
   const symOpts = choose(chordKey).map(x => ({ id: chordKey(x), label: chordKey(x) }));
@@ -1030,7 +1030,7 @@ function refBody(id) {
   if (id === 'chords') {
     const cards = CH_POOLS[2].map(c => { const ps = chordNotes(c); return rcard(`${chordSym(c, c.kind)}: ${triadText(ps)}`, `${KINDS[c.kind].name} трезвучие от ${ruNote(ps[0])}`, { key: 0, notes: ps, seq: false }, { midis: ps.map(midi), mode: 'both' }); }).join('');
     return `<p>В нотах над мелодией пишут буквенные обозначения аккордов. Нужно быстро понять, какое это трезвучие, и сыграть его. Нажми на нотный стан, чтобы послушать.</p>
-    <ul class="rules"><li><b>Буква</b> — это основной тон аккорда: C — до, D — ре, E — ми, F — фа, G — соль, A — ля, H — си. <b>B</b> — это си-бемоль.</li><li><b>Только буква</b> (C, F, G) — мажорное трезвучие: большая терция + малая терция.</li><li><b>Буква и m</b> (Dm, Am, Em) — минорное трезвучие: малая терция + большая терция.</li><li>Знак после буквы относится к основному тону: F♯m — фа-диез минор, E♭ — ми-бемоль мажор.</li><li>В до мажоре главные аккорды: <b>C, F, G</b>, а ещё <b>Dm, Em, Am</b>.</li><li>Септаккорды (C7, Dm7) пока не проходим.</li></ul>
+    <ul class="rules"><li><b>Буква</b> — это основной тон аккорда: C — до, D — ре, E — ми, F — фа, G — соль, A — ля, H — си. </li><li><b>Только буква</b> (C, F, G) — мажорное трезвучие: большая терция + малая терция.</li><li><b>Буква и m</b> (Dm, Am, Em) — минорное трезвучие: малая терция + большая терция.</li><li>Знак после буквы относится к основному тону: F♯m — фа-диез минор, E♭ — ми-бемоль мажор, B♭ — си-бемоль мажор.</li><li>В до мажоре главные аккорды: <b>C, F, G</b>, а ещё <b>Dm, Em, Am</b>.</li><li>Септаккорды (C7, Dm7) пока не проходим.</li></ul>
     <h2 class="lab">Аккорды от белых клавиш</h2><div class="rgrid">${cards}</div>`;
   }
   const cards = IV.map(iv => { const up = spellUp(C4, iv.steps, iv.semis); return rcard(`${iv.id}: ${iv.name}`, `${iv.steps + 1} ступ., ${iv.semis} полут.: ${ruNote(C4)} – ${ruNote(up)}`, { key: 0, notes: [C4, up], seq: true }, { midis: [midi(C4), midi(up)], mode: 'melharm' }); }).join('');
