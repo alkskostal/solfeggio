@@ -258,6 +258,9 @@ button,.key,.hit{touch-action:manipulation}
   .rtop .back,.rtop .link{white-space:nowrap;font-size:.88rem}
   .prompt{font-size:1.35rem}
 }
+
+.dopts{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:10px}
+.dopts .tg{min-height:36px}
 </style>
 <div id="app"></div>
 <script>
@@ -666,6 +669,41 @@ function spellForKey(m, n, lad) {
   return P(l, a, (m - a - BASE[l]) / 12 - 1);
 }
 
+
+/* ---------- 7. Тренировка аккомпанимента: аккорды по буквенным обозначениям ---------- */
+const CH_LETTERS = 'CDEFGAH';
+function chordSym(root, kind) {
+  let s = CH_LETTERS[root.l];
+  if (root.a > 0) s += '♯'; else if (root.a < 0) s = root.l === 6 ? 'B' : s + '♭';
+  return s + (kind === 'min' ? 'm' : '');
+}
+const CH = (l, a, kind) => ({ l, a, kind });
+const CH_POOLS = {
+  1: [CH(0, 0, 'maj'), CH(1, 0, 'min'), CH(2, 0, 'min'), CH(3, 0, 'maj'), CH(4, 0, 'maj'), CH(5, 0, 'min')],
+  2: [0, 1, 2, 3, 4, 5, 6].flatMap(l => [CH(l, 0, 'maj'), CH(l, 0, 'min')]),
+};
+CH_POOLS[3] = CH_POOLS[2].concat([CH(3, 1, 'maj'), CH(2, -1, 'maj'), CH(5, -1, 'maj'), CH(1, -1, 'maj'), CH(6, -1, 'maj'), CH(0, 1, 'min'), CH(3, 1, 'min'), CH(4, 1, 'min'), CH(0, 0, 'min'), CH(3, 0, 'min'), CH(4, 0, 'min')]);
+const chordNotes = c => triad(normOct(P(c.l, c.a, 4)), c.kind);
+const chordKey = c => chordSym(c, c.kind);
+function genChord(mode, level) {
+  const pool = CH_POOLS[level].filter(c => okAlt(chordNotes(c)));
+  const m = mode === 'mix' ? pick(['build', 'notes', 'staff', 'ear']) : mode;
+  const c = pick(pool), root = normOct(P(c.l, c.a, 4)), ps = triad(root, c.kind), sym = chordSym(c, c.kind);
+  const other = { ...c, kind: c.kind === 'maj' ? 'min' : 'maj' };
+  const near = pool.filter(x => x.kind === c.kind && x !== c && (Math.abs(x.l - c.l) <= 2 || x.a !== c.a));
+  const cands = [other, ...shuffle(near), ...shuffle(pool)].filter(x => okAlt(chordNotes(x)));
+  const choose = (keyOf) => { const out = [c], seen = new Set([keyOf(c)]); for (const x of cands) { if (out.length >= 4) break; const k = keyOf(x); if (!seen.has(k)) { seen.add(k); out.push(x); } } return shuffle(out); };
+  const kn = KINDS[c.kind];
+  const expl = `${sym} — ${kn.name} трезвучие от ${ruNote(root)}: ${triadText(ps)}. ` + (c.kind === 'min' ? 'Буква m значит «минор»: снизу малая терция.' : 'Если рядом нет m, аккорд мажорный: снизу большая терция.') + (c.l === 6 ? ' Помни: H — это си, B — это си-бемоль.' : '');
+  const base = { section: 'chords', mode, level, key: sym, explain: expl, avatar: c.kind, sound: { midis: ps.map(midi), mode: 'both' }, soundAfter: m === 'build' || m === 'notes' };
+  if (m === 'build') return { type: 'build', ...base, prompt: 'Сыграй трезвучие на клавиатуре по обозначению аккорда:', big: sym, kb: { root: null, check: 'pcs', expect: ps.map(pcOf), need: 3 }, noteLine: triadText(ps) };
+  const symOpts = choose(chordKey).map(x => ({ id: chordKey(x), label: chordKey(x) }));
+  if (m === 'staff') return choiceQ({ ...base, prompt: 'Какой это аккорд?', staff: { key: 0, notes: ps, seq: false } }, symOpts, sym);
+  if (m === 'ear') { const b = { ...base }; delete b.sound; return choiceQ({ ...b, prompt: 'Послушай аккорд. Как он обозначается?', audio: { midis: ps.map(midi), mode: 'both' } }, symOpts, sym); }
+  const nOpts = choose(x => triadText(chordNotes(x))).map(x => ({ id: triadText(chordNotes(x)), label: triadText(chordNotes(x)) }));
+  return choiceQ({ ...base, prompt: `Из каких звуков состоит аккорд ${sym}?`, big: sym }, nOpts, triadText(ps));
+}
+
 /* ---------- Каталог разделов ---------- */
 const SECTIONS = [
   { id: 'latin', title: 'Латинские названия нот', desc: 'C D E F G A H, ноты со знаками: Cis, Es, As, B',
@@ -683,6 +721,9 @@ const SECTIONS = [
   { id: 'intervals', title: 'Интервалы', desc: 'Построение, чтение со стана, слух',
     modes: [['build', 'Построить на клавиатуре'], ['staff', 'Определить по нотам'], ['ear', 'Определить на слух']],
     levels: [[1, 'Секунды и терции'], [2, '+ кварта, квинта, октава'], [3, 'Все интервалы']], gen: genInterval },
+  { id: 'chords', title: 'Тренировка аккомпанимента', desc: 'Аккорды по буквам: C, Dm, Am, F, G…',
+    modes: [['mix', 'Все задания вперемешку'], ['build', 'Сыграть аккорд на клавиатуре'], ['notes', 'Из каких звуков аккорд?'], ['staff', 'Назвать аккорд по нотам'], ['ear', 'Узнать аккорд на слух']],
+    levels: [[1, 'C, Dm, Em, F, G, Am'], [2, 'Мажор и минор от белых клавиш'], [3, 'Со знаками']], gen: genChord },
   { id: 'dict', title: 'Диктанты', desc: 'Мелодические и ритмические, 2, 4 и 8 тактов',
     modes: [['melody', 'Мелодический диктант'], ['rhythm', 'Ритмический диктант']],
     levels: [[1, '2 такта'], [2, '4 такта'], [3, '8 тактов']], gen: genDictation },
@@ -809,9 +850,10 @@ function audio() {
   return AC;
 }
 const ACTIVE = new Set();
-let TIMER = 0;
+let TIMER = 0, DICT_END = 0;
+const dictPlaying = () => !!AC && AC.currentTime < DICT_END;
 function stopAll() {
-  clearTimeout(TIMER);
+  clearTimeout(TIMER); DICT_END = 0;
   if (!AC) return;
   const now = AC.currentTime;
   ACTIVE.forEach(a => {
@@ -985,6 +1027,12 @@ function refBody(id) {
     <h2 class="lab">До мажор</h2><div class="rgrid">${mk(0, 'major')}</div><h2 class="lab">Ля минор</h2><div class="rgrid">${mk(0, 'minor')}</div>`;
   }
   if (id === 'dict') return refDict();
+  if (id === 'chords') {
+    const cards = CH_POOLS[2].map(c => { const ps = chordNotes(c); return rcard(`${chordSym(c, c.kind)}: ${triadText(ps)}`, `${KINDS[c.kind].name} трезвучие от ${ruNote(ps[0])}`, { key: 0, notes: ps, seq: false }, { midis: ps.map(midi), mode: 'both' }); }).join('');
+    return `<p>В нотах над мелодией пишут буквенные обозначения аккордов. Нужно быстро понять, какое это трезвучие, и сыграть его. Нажми на нотный стан, чтобы послушать.</p>
+    <ul class="rules"><li><b>Буква</b> — это основной тон аккорда: C — до, D — ре, E — ми, F — фа, G — соль, A — ля, H — си. <b>B</b> — это си-бемоль.</li><li><b>Только буква</b> (C, F, G) — мажорное трезвучие: большая терция + малая терция.</li><li><b>Буква и m</b> (Dm, Am, Em) — минорное трезвучие: малая терция + большая терция.</li><li>Знак после буквы относится к основному тону: F♯m — фа-диез минор, E♭ — ми-бемоль мажор.</li><li>В до мажоре главные аккорды: <b>C, F, G</b>, а ещё <b>Dm, Em, Am</b>.</li><li>Септаккорды (C7, Dm7) пока не проходим.</li></ul>
+    <h2 class="lab">Аккорды от белых клавиш</h2><div class="rgrid">${cards}</div>`;
+  }
   const cards = IV.map(iv => { const up = spellUp(C4, iv.steps, iv.semis); return rcard(`${iv.id}: ${iv.name}`, `${iv.steps + 1} ступ., ${iv.semis} полут.: ${ruNote(C4)} – ${ruNote(up)}`, { key: 0, notes: [C4, up], seq: true }, { midis: [midi(C4), midi(up)], mode: 'melharm' }); }).join('');
   return `<p>Интервал называют по числу ступеней и по качеству (по числу полутонов). Нажми на пример, чтобы послушать: сначала по очереди, потом вместе.</p>
   <ul class="rules"><li>Ч — чистый, М — малый, Б — большой, Ув — увеличенный, Ум — уменьшённый.</li><li>Тритон: ув.4 (3 тона) и ум.5.</li></ul><div class="rgrid">${cards}</div>`;
@@ -1013,7 +1061,7 @@ function viewRound() {
   if (q.big) body += `<div class="big">${esc(q.big)}</div>`;
   if (q.staff) body += `<div class="paper">${staffSVG(q.staff)}</div>`;
   if (q.audio) body += `<div class="listen"><button class="btn ghost" data-act="play">▶ Послушать</button><span class="hint">можно слушать сколько угодно раз</span></div>`;
-  else if (q.sound) body += `<div class="listen"><button class="btn ghost small" data-act="play">▶ Послушать</button><span class="hint">звучит для тренировки слуха</span></div>`;
+  else if (q.sound && !(q.soundAfter && !R.answered)) body += `<div class="listen"><button class="btn ghost small" data-act="play">▶ Послушать</button><span class="hint">звучит для тренировки слуха</span></div>`;
   if (q.type === 'choice') {
     body += `<div class="opts n${q.options.length}">${q.options.map(o => {
       let c = 'opt' + (o.av ? ' hasav' : ''); if (R.answered) { if (o.id === q.answer) c += ' right'; else if (o.id === R.picked) c += ' wrong'; }
@@ -1028,7 +1076,7 @@ function viewRound() {
     body += `<div class="after"><div class="fb ${ok ? 'good' : 'bad'}" role="status">${q.avatar && sec.id !== 'intervals' ? avatar(q.avatar, 'sm') : ''}<div><strong>${ok ? 'Верно!' : 'Не совсем.'}</strong> ${esc(q.explain)}${q.type === 'build' && !ok ? `<div class="fb-n">Правильно: ${esc(q.noteLine)}</div>` : ''}</div></div>${awardHTML(R.fresh)}<div class="next"><button class="btn" data-act="next">${R.i + 1 === R.qs.length ? 'Результат' : 'Дальше'}</button></div></div>`;
   }
   const streak = st.streak >= 2 ? `<span class="streak">Серия: ${st.streak}</span>` : '';
-  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="${S.sec}">← ${sec.title}</button><button class="link" data-act="ref">Справка</button><div class="dots" aria-label="Задание ${R.i + 1} из ${R.qs.length}">${dots}</div></div>${streak ? `<div class="rsub">${streak}</div>` : ''}${body}</main>`;
+  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="${S.sec}">← Назад</button><button class="link" data-act="ref">Справка</button><div class="dots" aria-label="Задание ${R.i + 1} из ${R.qs.length}">${dots}</div></div>${streak ? `<div class="rsub">${streak}</div>` : ''}${body}</main>`;
 }
 function kbHTML(q, plain) {
   const R = S.round; const k = q.kb || {};
@@ -1175,11 +1223,14 @@ function playDict(rhythm, midis, meter, opt) {
   const M = METERS[meter], from = opt.from || 0, to = opt.to == null ? rhythm.length - 1 : opt.to;
   if (opt.count) { for (let k = 0; k < M.num; k++) click(t + k * 2 * DU, k === 0); t += M.num * 2 * DU; }
   let idx = 0; for (let b = 0; b < from; b++) idx += rhythm[b].length;
+  const t0 = t;
   for (let b = from; b <= to; b++) {
     let u = 0;
     rhythm[b].forEach(d => { const m = midis ? midis[idx] : 72; if (m != null) tone(m, t + u * DU, midis ? d * DU * 0.97 : Math.min(d * DU * 0.9, 0.9), 0.26); u += d; idx++; });
     t += M.units * DU;
   }
+  DICT_END = t + 0.4;
+  if (S.loop && !(S.dict && S.dict.done)) TIMER = setTimeout(() => { if (S.screen === 'dict') playDict(rhythm, midis, meter, { from, to, loop: true }); }, Math.max(100, (DICT_END + 0.6 - c.currentTime) * 1000));
 }
 function dictAuto() { const D = S.dict; TIMER = setTimeout(() => { try { playDict(D.q.rhythm, D.q.kind === 'melody' ? D.q.notes.map(midi) : null, D.q.meter, { count: true }); } catch (e) { /* звук недоступен */ } }, 350); }
 function dictPlay(v) {
@@ -1192,7 +1243,7 @@ function dictPlay(v) {
 function rbFull(D) { return D.rb.every(b => b.reduce((a, x) => a + x, 0) === D.q.units); }
 function rbCurBar(D) { return D.rb.findIndex(b => b.reduce((a, x) => a + x, 0) < D.q.units); }
 function dictKey(i) {
-  audio(); stopAll(); tone(60 + i, AC ? AC.currentTime + 0.01 : 0, 1.4, 0.22);
+  audio(); if (!dictPlaying()) { stopAll(); tone(60 + i, AC ? AC.currentTime + 0.01 : 0, 1.4, 0.22); }
   const D = S.dict; if (!D || D.done || D.q.kind !== 'melody') return;
   const total = D.pp.length; if (D.cur < 1) D.cur = 1;
   D.pp[D.cur] = spellForKey(60 + i, D.q.n, D.q.lad);
@@ -1208,7 +1259,7 @@ function dictTap(i, e, el) {
     const d = Math.max(28, Math.min(42, Math.round((BOT - y) / SP) + 30));
     const l = d % 7, o = Math.floor(d / 7);
     D.pp[i] = P(l, sigAlt(D.q.n, l), o);
-    audio(); stopAll(); tone(midi(D.pp[i]), AC ? AC.currentTime + 0.01 : 0, 1.2, 0.22);
+    audio(); if (!dictPlaying()) { stopAll(); tone(midi(D.pp[i]), AC ? AC.currentTime + 0.01 : 0, 1.2, 0.22); }
     if (i < D.pp.length - 1) D.cur = i + 1;
   }
   render();
@@ -1218,7 +1269,7 @@ function dictAlt(da) {
   let i = D.cur; if (!D.pp[i] && i > 1) i--; const p = D.pp[i]; if (i < 1 || !p) return;
   D.cur = i; const a = da === 0 ? sigAlt(D.q.n, p.l) : Math.max(-1, Math.min(1, p.a + da));
   D.pp[i] = P(p.l, a, p.o);
-  audio(); stopAll(); tone(midi(D.pp[i]), AC ? AC.currentTime + 0.01 : 0, 1.2, 0.22); render();
+  audio(); if (!dictPlaying()) { stopAll(); tone(midi(D.pp[i]), AC ? AC.currentTime + 0.01 : 0, 1.2, 0.22); } render();
 }
 function dictDel() {
   const D = S.dict; if (D.done) return;
@@ -1230,7 +1281,7 @@ function dictDel() {
 function dictAdd(u) {
   const D = S.dict; if (D.done) return; const b = rbCurBar(D); if (b < 0) return;
   const sum = D.rb[b].reduce((a, x) => a + x, 0); if (sum + u > D.q.units) return;
-  D.rb[b].push(u); stopAll(); tone(72, AC ? AC.currentTime + 0.01 : 0, 0.3, 0.22); render();
+  D.rb[b].push(u); if (!dictPlaying()) { stopAll(); tone(72, AC ? AC.currentTime + 0.01 : 0, 0.3, 0.22); } render();
 }
 function dictCheck() {
   const D = S.dict, q = D.q; if (D.done) return;
@@ -1262,7 +1313,7 @@ function viewDict() {
     ? `<p class="dinfo"><b>${keyName(q.n, q.lad)}</b>, размер ${q.meter}, ${q.bars} ${plural(q.bars, 'такт', 'такта', 'тактов')}. Ритм записан, первый звук дан: <b>${ruNote(q.notes[0])}</b>. Нажми на нужную высоту прямо на нотном стане (над нужной нотой) или выбери ноту и нажми клавишу.</p>`
     : `<p class="dinfo">Размер <b>${q.meter}</b>, ${q.bars} ${plural(q.bars, 'такт', 'такта', 'тактов')}. Послушай и собери ритм по тактам из длительностей.</p>`;
   const labs = mel && !D.done ? `<label class="tg"><input type="checkbox" id="lab" data-act="labels" ${S.labels ? 'checked' : ''}> Подписи клавиш</label>` : '';
-  const tools = `<div class="listen dtools"><button class="btn" data-act="dplay" data-v="all">▶ Весь диктант</button>${mel ? '<button class="btn ghost" data-act="dtonic">Тоника</button>' : ''}${labs}</div><div class="dbars"><span class="muted">Послушать по тактам:</span> ${barChips}</div>`;
+  const tools = `<div class="listen dtools"><button class="btn" data-act="dplay" data-v="all">▶ Весь диктант</button><button class="btn ghost" data-act="dstop" aria-label="Остановить">■ Стоп</button>${mel ? '<button class="btn ghost" data-act="dtonic">Тоника</button>' : ''}</div><div class="dopts"><label class="tg"><input type="checkbox" data-act="dloop" ${S.loop ? 'checked' : ''}> Повторять</label>${labs}</div><div class="dbars"><span class="muted">Послушать по тактам:</span> ${barChips}</div>`;
   let work = '';
   if (!D.done) {
     if (mel) {
@@ -1282,7 +1333,7 @@ function viewDict() {
     <div class="row wrap-row"><button class="btn" data-act="start" data-v="${S.mode}">Ещё диктант</button><button class="btn ghost" data-act="section" data-v="dict">К заданиям раздела</button><button class="btn ghost" data-act="home">Все разделы</button></div></div>`;
   }
   const streak = st.streak >= 2 ? `<span class="streak">Серия: ${st.streak}</span>` : '';
-  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="dict">← Диктанты</button><button class="link" data-act="ref">Справка</button></div>${streak ? `<div class="rsub">${streak}</div>` : ''}
+  return `${header()}<main class="wrap narrow"><div class="rtop"><button class="back" data-act="section" data-v="dict">← Назад</button><button class="link" data-act="ref">Справка</button></div>${streak ? `<div class="rsub">${streak}</div>` : ''}
   <h2 class="prompt">${mel ? 'Мелодический диктант' : 'Ритмический диктант'}</h2>${info}${tools}<div class="paper dpaper">${paper}</div>${work}</main>`;
 }
 function refDict() {
@@ -1318,6 +1369,7 @@ function answerChoice(id) {
   const R = S.round, q = R.qs[R.i]; if (R.answered) return;
   R.answered = true; R.picked = id; R.result = id === q.answer; if (R.result) R.ok++;
   R.fresh = recordAnswer(S.name, q.section, q.key, R.result); render();
+  if (q.soundAfter) try { play(q); } catch (e) { /* звук недоступен */ }
 }
 function checkBuild() {
   const R = S.round, q = R.qs[R.i], k = q.kb; if (R.answered) return;
@@ -1336,7 +1388,7 @@ function nextQ() {
 }
 function autoPlay() {
   const q = S.round && S.round.qs[S.round.i];
-  if (S.screen === 'round' && q && (q.audio || (q.type === 'choice' && q.sound))) TIMER = setTimeout(() => { try { play(q); } catch (e) { /* звук недоступен */ } }, 250);
+  if (S.screen === 'round' && q && !q.soundAfter && (q.audio || (q.type === 'choice' && q.sound))) TIMER = setTimeout(() => { try { play(q); } catch (e) { /* звук недоступен */ } }, 250);
 }
 function keyClick(i) {
   if (S.screen === 'dict') { dictKey(i); return; }
@@ -1366,6 +1418,8 @@ document.addEventListener('click', e => {
   else if (a === 'meter') { S.meter = v; render(); }
   else if (a === 'lad') { S.lad = v; render(); }
   else if (a === 'dplay') dictPlay(v);
+  else if (a === 'dstop') { stopAll(); DICT_END = 0; }
+  else if (a === 'dloop') { S.loop = t.checked; if (!S.loop) { clearTimeout(TIMER); } }
   else if (a === 'dtonic') { const q = S.dict.q; playMidis(triad(q.tonic, q.lad === 'major' ? 'maj' : 'min').map(midi), 'both'); }
   else if (a === 'dcur') dictTap(+v, e, t);
   else if (a === 'dalt') dictAlt(+v);
