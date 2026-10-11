@@ -874,7 +874,19 @@ async function loadCloud() {
   try {
     const f = await fb();
     let u = f.auth.currentUser;
-    if (!u || u.isAnonymous || u.email !== TEACHER_EMAIL) { const r = await f.au.signInWithPopup(f.auth, new f.au.GoogleAuthProvider()); u = r.user; }
+    if (!u || u.isAnonymous || u.email !== TEACHER_EMAIL) {
+      const prov = new f.au.GoogleAuthProvider(); prov.setCustomParameters({ login_hint: TEACHER_EMAIL, prompt: 'select_account' });
+      try { const r = await f.au.signInWithPopup(f.auth, prov); u = r.user; }
+      catch (e) {
+        const c = e && e.code || '';
+        if (['auth/popup-blocked', 'auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/operation-not-supported-in-this-environment'].includes(c)) {
+          try { sessionStorage.setItem('solf-redirect', '1'); } catch (_) {}
+          await f.au.signInWithRedirect(f.auth, prov); return;
+        }
+        if (c === 'auth/unauthorized-domain') throw new Error('Этот адрес сайта не добавлен в Firebase (Authentication → Settings → Authorized domains). Открой сайт по адресу alkskostal.github.io/solfeggio/ и попробуй снова.');
+        throw new Error((c ? c + ': ' : '') + (e && e.message || e));
+      }
+    }
     if (u.email !== TEACHER_EMAIL) { await f.au.signOut(f.auth); throw new Error('Этот аккаунт не имеет доступа. Войди почтой преподавателя.'); }
     const snap = await f.fs.getDocs(f.fs.collection(f.db, 'progress'));
     const rows = [], ids = {};
@@ -1570,6 +1582,11 @@ document.addEventListener('toggle', e => { if (e.target && e.target.dataset && e
 loadDB();
 loadPiano();
 render();
+if (FB_CONFIG) {
+  fb().catch(() => { FB = null; });
+  let back = false; try { back = sessionStorage.getItem('solf-redirect') === '1'; } catch (_) {}
+  if (back) { try { sessionStorage.removeItem('solf-redirect'); } catch (_) {} fb().then(async f => { try { await f.au.getRedirectResult(f.auth); } catch (e) { S.cloud = { status: 'error', msg: (e.code ? e.code + ': ' : '') + (e.message || e) }; } S.screen = 'teacher'; if (!S.cloud || S.cloud.status !== 'error') loadCloud(); else render(); }); }
+}
 
 </script>
 </body></html>
