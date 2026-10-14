@@ -940,7 +940,11 @@ async function syncStudent(name) {
     persistLocal();
     if (JSON.stringify(DB.st[name]) !== before && S.name === name && (S.screen === 'home' || S.screen === 'section')) render();
     await f.fs.setDoc(ref, { name, updated: Date.now(), data: JSON.stringify(DB.st[name]), deleted: false });
-  } catch (e) { console.warn('sync', e); }
+  } catch (e) {
+    console.warn('sync', e);
+    // Пока правила не обновлены: сохраняем по-старому, чтобы результаты не терялись
+    if (e && e.code === 'permission-denied') { try { const f = await fb(); await f.fs.setDoc(f.fs.doc(f.db, 'progress', encodeURIComponent(name) + '__' + deviceId()), { name, device: deviceId(), updated: Date.now(), data: JSON.stringify(DB.st[name]) }); } catch (e2) { console.warn('legacy sync', e2); } }
+  }
 }
 function mergeProgress(rows) {
   const by = {};
@@ -970,10 +974,12 @@ async function loadCloud() {
     if (u.email !== TEACHER_EMAIL) { await f.au.signOut(f.auth); throw new Error('Этот аккаунт не имеет доступа. Войди почтой преподавателя.'); }
     const rows = [], ids = {};
     const add = (col, snap, skipDeleted) => snap.forEach(d => { const v = d.data(); if (skipDeleted && v.deleted) return; rows.push(v); (ids[v.name] ||= []).push({ c: col, id: d.id }); });
-    add(SCOL, await f.fs.getDocs(f.fs.collection(f.db, SCOL)), true);
+    let note = '';
+    try { add(SCOL, await f.fs.getDocs(f.fs.collection(f.db, SCOL)), true); }
+    catch (e) { note = 'Новые правила Firebase ещё не опубликованы, поэтому показаны только старые данные. Обнови правила (вкладка Rules в Firestore), и появятся все ученики.'; }
     try { add('progress', await f.fs.getDocs(f.fs.collection(f.db, 'progress')), false); } catch (e) { /* старые данные могут быть недоступны */ }
     const data = mergeProgress(rows);
-    S.cloud = { status: 'ok', data, ids, count: Object.keys(data).length, at: Date.now() };
+    S.cloud = { status: 'ok', data, ids, count: Object.keys(data).length, at: Date.now(), note };
   } catch (e) { S.cloud = { status: 'error', msg: String(e && e.message || e) }; }
   render();
 }
@@ -1443,7 +1449,7 @@ function viewTeacher() {
     <h3 class="lab">Чаще всего ошибается</h3>${weak ? `<ul class="weak">${weak}</ul>` : '<p class="muted">Пока мало данных: нужно хотя бы по 3 ответа на тему.</p>'}
     <div class="stu-f"><button class="link danger" data-act="del" data-v="${esc(n)}">${S.confirmDel === n ? 'Нажми ещё раз: удалить весь прогресс' : 'Удалить ученика'}</button></div></article>`;
   });
-  const panel = !cloudOn ? '' : C.status === 'loading' ? '<div class="card empty"><p>Загружаю результаты…</p></div>' : C.status === 'ok' ? `<p class="muted">Обновлено ${new Date(C.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}, учеников: ${C.count}. <button class="link" data-act="tcloud">Обновить</button></p>` : `<div class="card empty"><p>${C.status === 'error' ? esc(C.msg) + '<br><br>' : 'Чтобы увидеть результаты всех учеников, войди аккаунтом преподавателя.<br><br>'}<button class="btn" data-act="tcloud">Войти через Google</button></p></div>`;
+  const panel = !cloudOn ? '' : C.status === 'loading' ? '<div class="card empty"><p>Загружаю результаты…</p></div>' : C.status === 'ok' ? `<p class="muted">Обновлено ${new Date(C.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}, учеников: ${C.count}. <button class="link" data-act="tcloud">Обновить</button></p>${C.note ? `<div class="card empty"><p>${esc(C.note)}</p></div>` : ''}` : `<div class="card empty"><p>${C.status === 'error' ? esc(C.msg) + '<br><br>' : 'Чтобы увидеть результаты всех учеников, войди аккаунтом преподавателя.<br><br>'}<button class="btn" data-act="tcloud">Войти через Google</button></p></div>`;
   return `${header()}<main class="wrap"><button class="back" data-act="${S.name ? 'home' : 'logout'}">← Назад</button><h1 class="h-sec">Прогресс учеников</h1>${panel}<p class="lead">${cloudOn ? 'Результаты со всех устройств, где ученики заходили на сайт.' : 'Показаны ученики, которые занимались на этом устройстве.'}</p>${cards || '<div class="card empty"><p>Пока никто не занимался. Когда ученик пройдёт первый раунд, он появится здесь.</p></div>'}</main>`;
 }
 
