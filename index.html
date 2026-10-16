@@ -336,6 +336,7 @@ h3.lab.sub{margin-top:18px}
 .card.result .pme{width:64px}
 .card.result .pnota{height:70px}
 .hero>.nota{position:absolute;right:96px;bottom:6px}
+details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 </style>
 <div id="app"></div>
 <script>
@@ -869,7 +870,14 @@ const SUGGEST = ['Юля', 'Марк', 'Егор', 'Полина', 'Ника'];
 let DB = { v: 1, last: '', st: {} };
 function loadDB() { try { const r = JSON.parse(localStorage.getItem(STORE_KEY)); if (r && r.st) DB = r; } catch (e) { /* пусто */ } }
 function persistLocal() { try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) { /* без сохранения */ } }
-function saveDB() { persistLocal(); if (typeof S !== 'undefined' && S.name) queueSync(S.name); }
+const IDLE_MS = 20 * 60 * 1000;
+/* Сессия занятия: начинается при входе, продолжается пока ученик активен, после 20 минут тишины считается новой */
+function touchSession(name) {
+  const s = student(name); s.sess ||= []; const now = Date.now(), last = s.sess[s.sess.length - 1];
+  if (last && now - last.b < IDLE_MS) last.b = now; else { s.sess.push({ a: now, b: now }); if (s.sess.length > 100) s.sess.shift(); }
+}
+function saveDB() {
+  if (typeof S !== 'undefined' && S.name) touchSession(S.name); persistLocal(); if (typeof S !== 'undefined' && S.name) queueSync(S.name); }
 function student(name) {
   const s = DB.st[name] || (DB.st[name] = { seen: Date.now(), sets: {}, items: {}, log: [] });
   s.stat ||= { correct: 0, answered: 0, streak: 0, best: 0 }; s.badges ||= {};
@@ -896,10 +904,10 @@ function deviceId() {
 }
 const SCOL = 'students';
 const sid = name => encodeURIComponent(name);
-function emptyState() { return { seen: 0, sets: {}, items: {}, log: [], stat: { correct: 0, answered: 0, streak: 0, best: 0 }, badges: {} }; }
+function emptyState() { return { seen: 0, sets: {}, items: {}, log: [], sess: [], stat: { correct: 0, answered: 0, streak: 0, best: 0 }, badges: {} }; }
 /* Слияние без потерь: по каждому числу берём максимум, награды сохраняем все. local нужен для текущей серии. */
 function mergeState(remote, local) {
-  const m = emptyState(), logs = {};
+  const m = emptyState(), logs = {}, ss = {};
   [remote, local].forEach(d => {
     if (!d) return;
     m.seen = Math.max(m.seen, d.seen || 0);
@@ -909,8 +917,10 @@ function mergeState(remote, local) {
     Object.entries(d.items || {}).forEach(([k, v]) => { const x = (m.items[k] ||= { n: 0, ok: 0 }); x.n = Math.max(x.n, v.n || 0); x.ok = Math.max(x.ok, v.ok || 0); });
     Object.entries(d.badges || {}).forEach(([k, t]) => { m.badges[k] = Math.min(m.badges[k] || t, t); });
     (d.log || []).forEach(r => { logs[r.t + '|' + r.set] = r; });
+    (d.sess || []).forEach(x => { ss[x.a] = Math.max(ss[x.a] || 0, x.b || x.a); });
   });
   m.log = Object.values(logs).sort((x, y) => x.t - y.t).slice(-200);
+  m.sess = Object.entries(ss).map(([k, b]) => ({ a: +k, b })).sort((x, y) => x.a - y.a).slice(-100);
   m.stat.streak = (local && local.stat && local.stat.streak) || 0;
   return m;
 }
@@ -1443,8 +1453,14 @@ function viewTeacher() {
     }).join('');
     const weak = Object.entries(s.items).filter(([, v]) => v.n >= 3 && v.ok / v.n < 0.75).sort((a, b) => a[1].ok / a[1].n - b[1].ok / b[1].n).slice(0, 5)
       .map(([k, v]) => { const [sid, key] = k.split('|'); return `<li><b>${esc(key)}</b> <span>${secById(sid) ? secById(sid).title : sid}, верно ${v.ok} из ${v.n}</span></li>`; }).join('');
+    const fmtT = t => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const fmtD = t => new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    const sessLine = x => { const mins = Math.round((x.b - x.a) / 60000); return `<li>${fmtD(x.a)}, ${fmtT(x.a)}${mins >= 1 ? '–' + fmtT(x.b) : ''} <span>${mins >= 1 ? mins + ' мин' : 'меньше минуты'}</span></li>`; };
+    const sess = (s.sess || []).slice().reverse();
+    const sessHTML = sess.length ? `<h3 class="lab">Занятия</h3><ul class="weak">${sess.slice(0, 4).map(sessLine).join('')}</ul>${sess.length > 4 ? `<details class="more"><summary>Ещё занятия (${sess.length - 4})</summary><ul class="weak">${sess.slice(4, 40).map(sessLine).join('')}</ul></details>` : ''}` : '<h3 class="lab">Занятия</h3><p class="muted">Время занятий начнёт записываться после обновления: появится со следующего входа ученика.</p>';
     cards += `<article class="card stu"><div class="stu-h"><h2>${esc(n)}</h2><div class="stu-m">звёзд: ${stars} из ${maxStars} · точность ${tot ? Math.round(ok / tot * 100) : 0}% · был(а) ${fmtDate(s.seen)}</div></div>
     <div class="stu-m">верных ответов: ${s.stat.correct} · лучшая серия: ${s.stat.best} · наград: ${Object.keys(s.badges).length} из ${ALLB.length}</div>
+    ${sessHTML}
     <div class="tbl"><table><thead><tr><th>Раздел</th><th class="num">Раундов</th><th class="num">Точность</th></tr></thead><tbody>${rows}</tbody></table></div>
     <h3 class="lab">Чаще всего ошибается</h3>${weak ? `<ul class="weak">${weak}</ul>` : '<p class="muted">Пока мало данных: нужно хотя бы по 3 ответа на тему.</p>'}
     <div class="stu-f"><button class="link danger" data-act="del" data-v="${esc(n)}">${S.confirmDel === n ? 'Нажми ещё раз: удалить весь прогресс' : 'Удалить ученика'}</button></div></article>`;
@@ -1693,7 +1709,7 @@ function render() {
 }
 function goName(raw) {
   let n = String(raw || '').trim().replace(/\s+/g, ' '); if (!n) return;
-  n = n[0].toUpperCase() + n.slice(1); S.name = n; DB.last = n; student(n).seen = Date.now(); saveDB(); S.screen = 'home'; render(); syncStudent(n);
+  n = n[0].toUpperCase() + n.slice(1); S.name = n; DB.last = n; student(n).seen = Date.now(); touchSession(n); saveDB(); S.screen = 'home'; render(); syncStudent(n);
 }
 function soundOf(q) { return q.audio || q.sound; }
 function play(q) { const a = soundOf(q); if (!a) return; if (a.chain) playChain(a.chain); else playMidis(a.midis, a.mode); }
