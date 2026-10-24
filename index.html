@@ -894,9 +894,14 @@ let FB = null, SYNC = 0;
 function fb() {
   if (!FB_CONFIG) return Promise.resolve(null);
   if (!FB) FB = (async () => {
-    const [a, au, fs] = await Promise.all([import(FBV + 'firebase-app.js'), import(FBV + 'firebase-auth.js'), import(FBV + 'firebase-firestore.js')]);
-    const app = a.initializeApp(FB_CONFIG);
-    return { au, fs, auth: au.getAuth(app), db: fs.getFirestore(app) };
+    let m = null;
+    try { m = await import('./fb.js?v=1'); } catch (e) { m = null; } // своя копия Firebase рядом с сайтом
+    if (m) { const app = m.initializeApp(FB_CONFIG); return { au: m, fs: m, auth: m.getAuth(app), db: m.getFirestore(app) }; }
+    try {
+      const [a, au, fs] = await Promise.all([import(FBV + 'firebase-app.js'), import(FBV + 'firebase-auth.js'), import(FBV + 'firebase-firestore.js')]);
+      const app = a.initializeApp(FB_CONFIG);
+      return { au, fs, auth: au.getAuth(app), db: fs.getFirestore(app) };
+    } catch (e) { throw new Error('Не удаётся загрузить службу сохранения (Firebase). Возможно, на этом устройстве или в сети блокируются сервисы Google. Попробуй другой браузер, другую сеть или отключи блокировщик рекламы.'); }
   })();
   return FB;
 }
@@ -999,7 +1004,7 @@ async function loadCloud() {
     try { add('progress', await f.fs.getDocs(f.fs.collection(f.db, 'progress')), false); } catch (e) { /* старые данные могут быть недоступны */ }
     const data = mergeProgress(rows);
     S.cloud = { status: 'ok', data, ids, count: Object.keys(data).length, at: Date.now(), note };
-  } catch (e) { S.cloud = { status: 'error', msg: String(e && e.message || e) }; }
+  } catch (e) { FB = null; S.cloud = { status: 'error', msg: String(e && e.message || e) }; }
   render();
 }
 /* Удаление: старые документы стираем, а на имя ставим «метку удаления», чтобы устройства ученика тоже очистились при следующем входе. */
