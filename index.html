@@ -337,6 +337,7 @@ h3.lab.sub{margin-top:18px}
 .card.result .pnota{height:70px}
 .hero>.nota{position:absolute;right:96px;bottom:6px}
 details.more{margin-top:6px}details.more summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+.syncst{font-size:.78rem;padding:2px 8px;border-radius:99px}.syncst.ok{color:var(--good);background:var(--good-bg)}.syncst.bad{color:var(--bad);background:var(--bad-bg)}.syncst:empty{display:none}
 </style>
 <div id="app"></div>
 <script>
@@ -825,8 +826,8 @@ function genChain(mode, level) {
     // на слух: выбрать обозначения цепочки
     const lab = (p, iv) => p.map((f, i) => chainLabel(kk, f, iv[i])).join(' – ');
     const correct = labels.join(' – '), opts = new Set([correct]);
-    for (let g = 0; g < 80 && opts.size < 4; g++) {
-      const p2 = rnd(3) ? pat.slice() : pick(CHAIN_PATTERNS), iv2 = p2.map((_, i) => (level === 1 || i === 0 || i === p2.length - 1 ? 0 : pick(level === 2 ? [0, 1] : [0, 1, 2])));
+    for (let g = 0; g < 600 && opts.size < 4; g++) {
+      const p2 = (rnd(3) && g < 40) ? pat.slice() : pick(CHAIN_PATTERNS), iv2 = p2.map((_, i) => (level === 1 || i === 0 || i === p2.length - 1 ? 0 : pick(level === 2 ? [0, 1] : [0, 1, 2])));
       if (p2.length === pat.length && rnd(2)) { const j = 1 + rnd(pat.length - 2 || 1); if (j < p2.length - 1) p2[j] = pick(['S', 'D']); }
       opts.add(lab(p2, iv2));
     }
@@ -903,6 +904,13 @@ function deviceId() {
   try { let d = localStorage.getItem('solfeggio-device'); if (!d) { d = Math.random().toString(36).slice(2, 10); localStorage.setItem('solfeggio-device', d); } return d; } catch (e) { return 'nodev'; }
 }
 const SCOL = 'students';
+let SYNCST = { ok: null, at: 0, err: '' };
+function syncLabel() { return SYNCST.ok === null ? '' : SYNCST.ok ? '☁ сохранено' : '⚠ нет связи с облаком'; }
+function setSync(ok, err) {
+  SYNCST = { ok, at: Date.now(), err: err || '' };
+  const el = typeof document !== 'undefined' && document.getElementById('syncst');
+  if (el) { el.textContent = syncLabel(); el.className = 'syncst ' + (ok ? 'ok' : 'bad'); el.title = ok ? 'Результаты сохранены в облаке и видны преподавателю' : 'Результаты пока хранятся только на этом устройстве. ' + SYNCST.err; }
+}
 const sid = name => encodeURIComponent(name);
 function emptyState() { return { seen: 0, sets: {}, items: {}, log: [], sess: [], stat: { correct: 0, answered: 0, streak: 0, best: 0 }, badges: {} }; }
 /* Слияние без потерь: по каждому числу берём максимум, награды сохраняем все. local нужен для текущей серии. */
@@ -950,8 +958,9 @@ async function syncStudent(name) {
     persistLocal();
     if (JSON.stringify(DB.st[name]) !== before && S.name === name && (S.screen === 'home' || S.screen === 'section')) render();
     await f.fs.setDoc(ref, { name, updated: Date.now(), data: JSON.stringify(DB.st[name]), deleted: false });
+    setSync(true);
   } catch (e) {
-    console.warn('sync', e);
+    console.warn('sync', e); setSync(false, (e && e.code ? e.code + ' ' : '') + (e && e.message || ''));
     // Пока правила не обновлены: сохраняем по-старому, чтобы результаты не терялись
     if (e && e.code === 'permission-denied') { try { const f = await fb(); await f.fs.setDoc(f.fs.doc(f.db, 'progress', encodeURIComponent(name) + '__' + deviceId()), { name, device: deviceId(), updated: Date.now(), data: JSON.stringify(DB.st[name]) }); } catch (e2) { console.warn('legacy sync', e2); } }
   }
@@ -1284,7 +1293,7 @@ const MEDAL = `<svg class="medal" viewBox="0 0 40 40" aria-hidden="true"><circle
 
 function header() {
   return `<header class="top"><a class="brand" href="#" data-act="home"><span class="brand-mark">𝄞</span>Сольфеджио</a>
-  <nav class="nav">${S.name ? `<span class="who">${esc(S.name)}</span><button class="link" data-act="logout">Сменить</button>` : ''}<button class="link" data-act="teacher">Для преподавателя</button></nav></header>`;
+  <nav class="nav">${S.name ? `<span class="who">${esc(S.name)}</span><span id="syncst" class="syncst ${SYNCST.ok ? 'ok' : 'bad'}" title="${esc(SYNCST.ok ? 'Результаты сохранены в облаке и видны преподавателю' : 'Результаты пока хранятся только на этом устройстве. ' + SYNCST.err)}">${syncLabel()}</span><button class="link" data-act="logout">Сменить</button>` : ''}<button class="link" data-act="teacher">Для преподавателя</button></nav></header>`;
 }
 const CONTOUR = `<svg class="contour" viewBox="0 0 600 160" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g fill="none" stroke-width="1.2"><path d="M-20 120C60 60 120 150 210 100S350 30 430 80 560 120 640 60"/><path d="M-20 138C70 84 125 168 215 120S352 52 432 100 560 140 640 82"/><path d="M-20 102C55 40 118 132 205 80S348 10 428 60 560 100 640 40"/><path d="M-20 84C50 22 112 112 200 62S345 -10 425 40 560 80 640 20"/><ellipse cx="470" cy="52" rx="60" ry="26"/><ellipse cx="470" cy="52" rx="38" ry="15"/><ellipse cx="110" cy="40" rx="48" ry="20"/></g></svg>`;
 const PIN = `<svg class="pin" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 29C5 20 2 15 2 11a10 10 0 0 1 20 0c0 4-3 9-10 18z"/><text x="12" y="16" text-anchor="middle" font-size="12">𝄞</text></svg>`;
@@ -1812,6 +1821,11 @@ loadDB();
 loadPiano();
 render();
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (_) {}
+if (FB_CONFIG) {
+  setInterval(() => { if (S.name && SYNCST.ok === false) syncStudent(S.name); }, 60000);
+  window.addEventListener('online', () => { if (S.name) syncStudent(S.name); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.name && SYNCST.ok === false) syncStudent(S.name); });
+}
 if (FB_CONFIG) {
   fb().catch(() => { FB = null; });
   let back = false; try { back = sessionStorage.getItem('solf-redirect') === '1'; } catch (_) {}
